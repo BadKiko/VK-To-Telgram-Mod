@@ -6,16 +6,17 @@ import config
 import db
 import random
 import datetime
+import json
 import vk_api
 import telebot
 import threading
 import urllib.request as ur
 from PIL import Image # Для преобразования изображений из webp в PNG
-
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 config.initConfig()
 
 module = sys.modules[__name__]
-
+global vk_session
 # Код настоятельно рекомендуется читать снизу вверх!
 
 #    _______        _     
@@ -265,46 +266,67 @@ def checkRedirect_vk( msg ):
 	return False
 
 
-
 def transferMessageToVK( chatid, text, fromUser, attachment ):
-
+	print( 'Отправка' )
 	if ( config.getCell('telegram_SendName') ):
 		time = current_time()
-		text = str( time + ' | ' + fromUser + ': ' + text )
+		text = str(fromUser + ': ' + text )
 
 	randid = random.randint(-9223372036854775808, +9223372036854775807) #int64
+	if config.getCell('use_bot'):
 
-	if attachment is None:
-
-		try:
-			module.vk.messages.send( chat_id = config.getCell( 't_' + chatid ), message = text, random_id=randid )
-		except vk_api.ApiError as error_msg:
-			module.vk.messages.send( user_id = config.getCell( 't_' + chatid ), message = text, random_id=randid )
-		#print( 'Сообщение успешно отправлено! ( ' + text + ' )' )
+		vk_bot_token = config.getCell('vk_bot_token')
+		vk_session = vk_api.VkApi(token=vk_bot_token)# Пока не придумал как убрать 2 авторизацию для потока 
+		vk_session.method('messages.send', {'chat_id' : 1, 'message' : text, 'random_id' : 0})
+		print( 'Сообщение успешно отправлено! ( ' + text + ' )' )
 
 	else:
+		if attachment is None:
 
-		getSticker = db.checkSticker( attachment )
+			try:
+				module.vk.messages.send( chat_id = config.getCell( 't_' + chatid ), message = text, random_id=randid )
+			except vk_api.ApiError as error_msg:
+				module.vk.messages.send( user_id = config.getCell( 't_' + chatid ), message = text, random_id=randid )
+			print( 'Сообщение успешно отправлено 2! ( ' + text + ' )' )
+
+		else:
+
+			getSticker = db.checkSticker( attachment )
 
 		# Если стикер не найден в БД
-		if getSticker is None:
-			stickerURL = 'https://api.telegram.org/file/bot{0}/{1}'.format( config.getCell( 'telegram_token' ), attachment )
-			saveSticker( stickerURL, attachment )
-			getSticker = db.checkSticker( attachment )
+			if getSticker is None:
+				stickerURL = 'https://api.telegram.org/file/bot{0}/{1}'.format( config.getCell( 'telegram_token' ), attachment )
+				saveSticker( stickerURL, attachment )
+				getSticker = db.checkSticker( attachment )
 
 		#print( getSticker )
 
-		try:
-			module.vk.messages.send( chat_id = config.getCell( 't_' + chatid ), message = "", attachment = getSticker, random_id=randid )
-		except vk_api.ApiError as error_msg:
-			module.vk.messages.send( user_id = config.getCell( 't_' + chatid ), message = "", attachment = getSticker, random_id=randid )
-
+			try:
+				module.vk.messages.send( chat_id = config.getCell( 't_' + chatid ), message = "", attachment = getSticker, random_id=randid )
+			except vk_api.ApiError as error_msg:
+				module.vk.messages.send( user_id = config.getCell( 't_' + chatid ), message = "", attachment = getSticker, random_id=randid )
 	return False
 
 def checkRedirect_telegram( chatid, text, fromUser, attachment ):
 	if not config.getCell( 't_' + chatid ) is None:
 		transferMessageToVK( chatid, text, fromUser, attachment )
 		return False
+	if config.getCell('use_bot'):
+		transferMessageToVK( 0, text, fromUser, attachment )
+
+
+# Посылаем простые сообщения в Telegram
+# Идея: сделать в будущем наклонные столбики, теперь главное не забыть
+def transferMessagesToTelegramFromBot(userName, mbody ):
+
+	time = current_time()
+
+	if config.getCell( 'need_time') == True:
+		niceText = str( time + ' | ' + userName + ': ' + mbody )
+	else:
+		niceText = str( userName + ': ' + mbody )
+
+	module.bot.send_message( config.getCell( 'vk_bot_telegram_bot_id'), niceText )
 
 # Посылаем простые сообщения в Telegram
 # Идея: сделать в будущем наклонные столбики, теперь главное не забыть
@@ -317,7 +339,10 @@ def transferMessagesToTelegram( idd, userName, mbody, fwdList ):
 		return False
 
 	time = current_time()
-	niceText = str( time + ' | ' + userName + ': ' + mbody )
+	if config.getCell( 'need_time') == True:
+		niceText = str( time + ' | ' + userName + ': ' + mbody )
+	else:
+		niceText = str( userName + ': ' + mbody )
 
 	if not fwdList is None:
 
@@ -381,24 +406,65 @@ def captcha_handler( captcha ):
 
 def init_vk():
 
-	login = config.getCell( 'vk_login' )
-	password = config.getCell( 'vk_password' )
-	app = config.getCell( 'app_id' )
+	if(config.getCell("use_bot") == False): # Проверка на использование бота в вк для предачи сообщений
+		login = config.getCell( 'vk_login' )
+		password = config.getCell( 'vk_password' )
+		app = config.getCell( 'app_id' )
 
-	print( "login in vk as: " + login )
+		print( "login in vk as: " + login )
 
-	global vk_session
+		vk_session = vk_api.VkApi( login, password, app_id=app, auth_handler=auth_handler, captcha_handler=captcha_handler )
 
-	vk_session = vk_api.VkApi( login, password, app_id=app, auth_handler=auth_handler, captcha_handler=captcha_handler )
+		try:
+			vk_session.auth()
+		except vk_api.AuthError as error_msg:
+			print( error_msg )
 
-	try:
-		vk_session.auth()
-	except vk_api.AuthError as error_msg:
-		print( error_msg )
+		module.vk = vk_session.get_api() # Важная штука
 
-	module.vk = vk_session.get_api() # Важная штука
+		input_vk()
+	else:
+		print("login with vk bot")
+		vk_bot_token = config.getCell('vk_bot_token')
+		vk_session = vk_api.VkApi(token=vk_bot_token)
+		input_vk_bot(vk_session)
 
-	input_vk()
+def input_vk_bot(vk_session):
+	longpoll = VkBotLongPoll(vk_session, config.getCell('vk_bot_vk_id'))
+
+	for event in longpoll.listen():
+		if event.type == VkBotEventType.MESSAGE_NEW:
+			if event.from_chat:
+				chatbotid = event.chat_id
+				print(event.chat_id)
+				user_id = event.object.message['from_id']
+				username_json = vk_session.method("users.get", {'user_ids': user_id})
+				username_dict = username_json[0]
+				username_dict.pop('id') # Remove the 'id' property
+				username_str = json.dumps(username_dict, ensure_ascii=False)
+				userName = username_dict['first_name'] + " " +username_dict['last_name']
+				mbody = ""
+				mbody += event.object.message['text'] + "\n"
+
+				for attachments in event.raw['object']['message']['attachments']:
+					if attachments['type'] == 'photo':
+						image_list = attachments['photo']['sizes']
+						image_list_str = json.dumps(image_list)
+						image_list_json = json.loads(image_list_str)
+						max_quality = 0
+						max_quality_url = ''
+						for image in image_list_json:
+							quality = image['height']
+							if quality > max_quality:
+								max_quality = quality
+								max_quality_url = image['url']
+						mbody += max_quality_url
+						print(max_quality_url)
+
+							
+
+				print(userName+": "+mbody)
+				transferMessagesToTelegramFromBot(userName, mbody)
 
 def input_vk():
 	
@@ -441,14 +507,21 @@ def input_vk():
 def listener( messages ):
 	for m in messages:
 
+		print("TEXT")
 		if m.content_type == 'text':
 
 			# На команду 'Дай ID' кидает ID чата
 			if m.text == 'Дай ID':
 				module.bot.send_message( m.chat.id, str( m.chat.id ) )
 				continue
+			if config.getCell('use_bot'):
+				checkRedirect_telegram( "0", str( m.text ), getUserTName(m.from_user), None )
+				print("RedirectBot: "+getUserTName(m.from_user)+ m.text)
 
-			checkRedirect_telegram( str( m.chat.id ), str( m.text ), getUserTName(m.from_user), None )
+			else:
+				print("Redirect")
+				checkRedirect_telegram( str( m.chat.id ), str( m.text ), getUserTName(m.from_user), None )
+			
 
 		elif m.content_type == 'sticker':
 
@@ -461,7 +534,6 @@ def listener( messages ):
 
 
 def init_telegram():
-
 	module.bot = telebot.TeleBot( config.getCell( 'telegram_token' ) )
 	print( "Successfully loginned in telegram!")
 	input_telegram()
