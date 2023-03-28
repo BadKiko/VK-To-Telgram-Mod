@@ -17,6 +17,8 @@ config.initConfig()
 
 module = sys.modules[__name__]
 global vk_session
+
+global mbody
 # Код настоятельно рекомендуется читать снизу вверх!
 
 #    _______        _     
@@ -274,11 +276,11 @@ def transferMessageToVK( chatid, text, fromUser, attachment ):
 
 	randid = random.randint(-9223372036854775808, +9223372036854775807) #int64
 	if config.getCell('use_bot'):
-
-		vk_bot_token = config.getCell('vk_bot_token')
-		vk_session = vk_api.VkApi(token=vk_bot_token)# Пока не придумал как убрать 2 авторизацию для потока 
-		vk_session.method('messages.send', {'chat_id' : 1, 'message' : text, 'random_id' : 0})
-		print( 'Сообщение успешно отправлено! ( ' + text + ' )' )
+		if attachment is None:
+			vk_bot_token = config.getCell('vk_bot_token')
+			vk_session = vk_api.VkApi(token=vk_bot_token)# Пока не придумал как убрать 2 авторизацию для потока 
+			vk_session.method('messages.send', {'chat_id' : 4, 'message' : text, 'random_id' : 0})
+			print( 'Сообщение успешно отправлено! ( ' + text + ' )' )
 
 	else:
 		if attachment is None:
@@ -445,6 +447,10 @@ def input_vk_bot(vk_session):
 				userName = username_dict['first_name'] + " " +username_dict['last_name']
 				mbody = ""
 				mbody += event.object.message['text'] + "\n"
+				
+				for index,forwardedMessage in enumerate(event.object.message['fwd_messages']):    
+					mbody += process_forwarded_message(vk_session, forwardedMessage, 0)
+					print(mbody)
 
 				for attachments in event.raw['object']['message']['attachments']:
 					if attachments['type'] == 'photo':
@@ -465,6 +471,22 @@ def input_vk_bot(vk_session):
 
 				print(userName+": "+mbody)
 				transferMessagesToTelegramFromBot(userName, mbody)
+
+
+def process_forwarded_message(vk_session, forwardedMessage, depth):
+    fwd_str = json.dumps(forwardedMessage)
+    fwd_json = json.loads(fwd_str)
+    username_json = vk_session.method("users.get", {'user_ids': fwd_json['from_id']})
+    username_dict = username_json[0]
+    username_dict.pop('id') # Remove the 'id' property
+    username_str = json.dumps(username_dict, ensure_ascii=False)
+    userName = username_dict['first_name'] + " " +username_dict['last_name']
+    mbody = "\n" + "\t" * (depth*2) + userName + ": " + fwd_json['text']
+    if 'fwd_messages' in fwd_json:
+        for index, sub_forwardedMessage in enumerate(fwd_json['fwd_messages']):
+            sub_message = process_forwarded_message(vk_session, sub_forwardedMessage, depth + 1)
+            mbody += sub_message
+    return mbody
 
 def input_vk():
 	

@@ -21,9 +21,9 @@ def initConfig():
 
 	setCell("need_time", False) # Нужно ли время в сообщениях
 	setCell("use_bot", True) # Используем ли мы бота в вк для полчения сообщений (например из беседы)
-	setCell("vk_bot_token", "") # Токент ботинка
+	setCell("vk_bot_token", "***REMOVED***") # Токент ботинка
 	setCell("vk_bot_telegram_bot_id", '-904601663') # Сюды ид беседы в тг
-	setCell("vk_bot_vk_id", '') # Сюды ид беседы в vk
+	setCell("vk_bot_vk_id", '***REMOVED***') # Сюды ид беседы в vk
 	setCell( "vk_msgForPick", 1 ) # Сколько сообщений за раз обрабатывать? Просто не трогай...
 
 	setCell( "vk_AddFriends", False ) # Автоматически добавлять новых пользователей в друзья?
@@ -32,7 +32,7 @@ def initConfig():
 	setCell( "vk_password", "Password" ) # Пароль от аккаунта ВК
 
 	setCell( "app_id", ***REMOVED***) # Приложение, у которого есть доступ взаимодействовать с ВК
-	setCell( "telegram_token", "" ) # Токен ботинка в Telegram
+	setCell( "telegram_token", "***REMOVED***" ) # Токен ботинка в Telegram
 
 	setCell( "telegram_SendName", True ) # Отправлять в ВК текст с именем отправителя из Telegram
 
